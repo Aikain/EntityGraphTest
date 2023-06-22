@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.example.entitygraphtest.action.Course;
+import com.example.entitygraphtest.action.Event;
+import com.example.entitygraphtest.application.Application;
+import com.example.entitygraphtest.application.CourseApplication;
+import com.example.entitygraphtest.application.EventApplication;
 import jakarta.persistence.EntityGraph;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -11,6 +16,7 @@ import jakarta.transaction.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.assertj.core.api.SoftAssertions;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,63 +29,76 @@ class EntityGraphTestApplicationTests {
     private EntityManager entityManager;
 
     @Autowired
-    private ParentRepository parentRepository;
+    private ApplicationRepository applicationRepository;
 
     @Test
     void test() {
-        Child child = new Child();
-        child.setDependency(new Dependency("test"));
-        child.setChildDependency(new Dependency("test2"));
-        parentRepository.save(child);
+        CourseApplication courseApplication = new CourseApplication();
+        courseApplication.setCourse(new Course());
+        EventApplication eventApplication = new EventApplication();
+        eventApplication.setEvent(new Event());
 
-        List<Parent> parentList = parentRepository.findAll();
+        applicationRepository.save(courseApplication);
+        applicationRepository.save(eventApplication);
 
-        assertThat(parentList).hasSize(1);
-        assertEquals("test", parentList.get(0).getDependency().getTest());
-        assertEquals("test2", ((Child)parentList.get(0)).getChildDependency().getTest());
+        List<Application> applicationList = applicationRepository.findAll();
+
+        SoftAssertions softAssertions = new SoftAssertions();
+
+        softAssertions.assertThat(applicationList).hasSize(2);
+        softAssertions.assertThat(Hibernate.isInitialized(applicationList.get(0).getAction())).isTrue();    // OK???
+        softAssertions.assertThat(Hibernate.isInitialized(applicationList.get(1).getAction())).isTrue();    // Fail
+
+        softAssertions.assertAll();
     }
 
     @Transactional
     @Test
     void test2() {
-        Child child = new Child();
-        child.setDependency(new Dependency("test"));
-        child.setChildDependency(new Dependency("test2"));
-        entityManager.persist(child);
+        CourseApplication courseApplication = new CourseApplication();
+        courseApplication.setCourse(new Course());
+        EventApplication eventApplication = new EventApplication();
+        eventApplication.setEvent(new Event());
+
+        entityManager.persist(courseApplication);
+        entityManager.persist(eventApplication);
         entityManager.flush();
         entityManager.clear();
 
-        EntityGraph<Parent> entityGraph = entityManager.createEntityGraph(Parent.class);
-        entityGraph.addAttributeNodes("dependency");
-        entityGraph.addAttributeNodes("childDependency");
-
+        EntityGraph<Application> entityGraph = entityManager.createEntityGraph(Application.class);
+        entityGraph.addAttributeNodes("course");
+        entityGraph.addAttributeNodes("event");
         Map<String, Object> properties = new HashMap<>();
         properties.put("jakarta.persistence.fetchgraph", entityGraph);
 
-        Parent obj = entityManager.find(Parent.class, child.getId(), properties);
-        assertTrue(Hibernate.isInitialized(obj.getDependency()));                   // OK
-        assertTrue(Hibernate.isInitialized(((Child)obj).getChildDependency()));     // Fail
-    }
+        Application courseApplication1 = entityManager.find(Application.class, courseApplication.getId(), properties);
+        Application eventApplication1 = entityManager.find(Application.class, eventApplication.getId(), properties);
 
-    @Transactional
-    @Test
-    void test3() {
-        Child child = new Child();
-        child.setDependency(new Dependency("test"));
-        child.setChildDependency(new Dependency("test2"));
-        entityManager.persist(child);
-        entityManager.flush();
-        entityManager.clear();
 
-        EntityGraph<Child> entityGraph = entityManager.createEntityGraph(Child.class);
-        entityGraph.addAttributeNodes("dependency");
-        entityGraph.addAttributeNodes("childDependency");
+        EntityGraph<CourseApplication> courseEntityGraph = entityManager.createEntityGraph(CourseApplication.class);
+        courseEntityGraph.addAttributeNodes("course");
+        properties = new HashMap<>();
+        properties.put("jakarta.persistence.fetchgraph", courseEntityGraph);
 
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("jakarta.persistence.fetchgraph", entityGraph);
+        CourseApplication courseApplication2 = entityManager.find(CourseApplication.class, courseApplication.getId(), properties);
 
-        Parent obj = entityManager.find(Parent.class, child.getId(), properties);
-        assertTrue(Hibernate.isInitialized(obj.getDependency()));                   // OK
-        assertTrue(Hibernate.isInitialized(((Child)obj).getChildDependency()));     // OK
+
+        EntityGraph<EventApplication> eventEntityGraph = entityManager.createEntityGraph(EventApplication.class);
+        eventEntityGraph.addAttributeNodes("event");
+        properties = new HashMap<>();
+        properties.put("jakarta.persistence.fetchgraph", eventEntityGraph);
+
+        EventApplication eventApplication2 = entityManager.find(EventApplication.class, eventApplication.getId(), properties);
+
+
+        SoftAssertions softAssertions = new SoftAssertions();
+
+        softAssertions.assertThat(Hibernate.isInitialized(courseApplication1.getAction())).isTrue();    // OK???
+        softAssertions.assertThat(Hibernate.isInitialized(courseApplication2.getAction())).isTrue();    // OK
+
+        softAssertions.assertThat(Hibernate.isInitialized(eventApplication1.getAction())).isTrue();     // FAIL
+        softAssertions.assertThat(Hibernate.isInitialized(eventApplication2.getAction())).isTrue();     // FAIL
+
+        softAssertions.assertAll();
     }
 }
